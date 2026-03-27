@@ -9,3 +9,5 @@ run:
 clean:
 	mix $@
 
+publish:
+	mix hex $(if $(replace),publish --replace,cut)

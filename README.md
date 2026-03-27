@@ -1,0 +1,445 @@
+# Datum
+
+A declarative text parsing library for Elixir that makes it easy to extract structured data from unstructured text using a simple, composable DSL.
+
+## Features
+
+- **Declarative DSL**: Define field extraction rules using a clean, readable syntax
+- **Pattern Matching**: Use regex patterns to locate and capture data
+- **Custom Extractors**: Define custom extraction logic using functions
+- **Data Transformation**: Transform captured values with custom functions
+- **Component-based**: Organize extraction logic into reusable components
+- **Type-safe**: Works seamlessly with Elixir's pattern matching and type system
+
+## Installation
+
+Add Datum to your dependencies in `mix.exs`:
+
+```elixir
+def deps do
+  [
+    {:datum, path: "."}
+  ]
+end
+```
+
+Then run `mix deps.get`.
+
+## Quick Start
+
+### 1. Define a Component
+
+Create a module using `Datum.Component` and define fields to extract:
+
+```elixir
+defmodule MyApp.Datum.Components.EmailParser do
+  use Datum.Component
+
+  field :sender,
+    pattern: ~r/From:\s*(.+)/,
+    capture: :first,
+    transform: &String.trim/1
+
+  field :subject,
+    pattern: ~r/Subject:\s*(.+)/,
+    capture: :first
+
+  field :date,
+    pattern: ~r/Date:\s*(.+)/,
+    capture: :first
+end
+```
+
+### 2. Parse Text
+
+Use `Datum.parse/2` to extract data:
+
+```elixir
+email_text = """
+From: alice@example.com
+Subject: Meeting Tomorrow
+Date: 2026-03-27
+"""
+
+result = Datum.parse(email_text, components: [MyApp.Datum.Components.EmailParser])
+
+# Result:
+# %{
+#   sender: "alice@example.com",
+#   subject: "Meeting Tomorrow",
+#   date: "2026-03-27"
+# }
+```
+
+## API Reference
+
+- [API Reference](API.md)
+- [Developer Guide](DEVELOPER_GUIDE.md)
+
+### `Datum.Component`
+
+The main module for defining extraction components.
+
+#### `field(name, opts)`
+
+Define a field to extract from text.
+
+**Options:**
+- `:pattern` - Regex pattern to match. Capture groups are extracted automatically.
+- `:capture` - How to capture: `:first` (default, returns first capture group) or `:all` (returns all capture groups as a list)
+- `:transform` - Optional function to transform the captured value. Default is identity function (`& &1`).
+- `:function` - Custom extraction function. Takes the full text as input and returns the extracted value. Alternative to `:pattern`.
+- `:required` - Boolean (default `false`). Mark field as required. Use with `Datum.parse!/2` for validation.
+
+**Examples:**
+
+```elixir
+# Simple pattern matching
+field :email,
+  pattern: ~r/Email:\s*(\S+@\S+)/,
+  capture: :first
+
+# Capture multiple groups
+field :date_range,
+  pattern: ~r/(\d{4})-(\d{2})-(\d{2})/,
+  capture: :all
+
+# Transform captured value
+field :count,
+  pattern: ~r/Count:\s*(\d+)/,
+  capture: :first,
+  transform: &String.to_integer/1
+
+# Custom extraction function
+field :listing_name,
+  function: fn text ->
+    text
+    |> String.split("\n")
+    |> Enum.find(&String.contains?(&1, ["Apartment", "House"]))
+  end
+
+# Mark as required
+field :reservation_code,
+  pattern: ~r/Code:\s+([A-Z0-9]+)/,
+  capture: :first,
+  required: true
+```
+
+### `Datum.parse(text, components: [...])`
+
+Parse text using one or more components.
+
+**Parameters:**
+- `text` - String to parse
+- `components` - List of component modules to use for extraction
+
+**Returns:** Map with extracted fields. Only fields that matched are included.
+
+**Example:**
+
+```elixir
+result = Datum.parse(text, components: [Component1, Component2])
+# Fields from both components are merged into one map
+```
+
+### `Datum.parse!(text, components: [...])`
+
+Parse text with validation of required fields.
+
+**Parameters:**
+- `text` - String to parse
+- `components` - List of component modules to use for extraction
+
+**Returns:** Map with extracted fields (same as `parse/2`)
+
+**Raises:** `ArgumentError` if any required fields are missing
+
+**Example:**
+
+```elixir
+result = Datum.parse!(text, components: [Component1])
+# Raises ArgumentError if any fields marked as required: true are not found
+```
+
+## Real-World Example: Airbnb Reservation Parser
+
+Here's a complete example parsing Airbnb reservation emails:
+
+```elixir
+defmodule MyApp.Datum.Components.AirbnbReservation do
+  use Datum.Component
+
+  # Simple extraction with trimming
+  field :reservation_code,
+    pattern: ~r/Reservation code[:\s]+([A-Z0-9\-]+)/i,
+    capture: :first
+
+  # Extract and trim whitespace
+  field :guest_name,
+    pattern: ~r/Reservation for\s+([^\n]+)/i,
+    capture: :first,
+    transform: &String.trim/1
+
+  # Multiple captures transformed into structured data
+  field :date_range,
+    pattern: ~r/([A-Za-z]{3} \d{1,2})\s*–\s*([A-Za-z]{3} \d{1,2})/,
+    capture: :all,
+    transform: &normalize_dates/1
+
+  # Numeric extraction
+  field :nights,
+    pattern: ~r/(\d+)\s+nights?/i,
+    capture: :first,
+    transform: &String.to_integer/1
+
+  # Currency extraction
+  field :payout_amount,
+    pattern: ~r/Payout[:\s]+\$?([\d,]+\.\d{2})/i,
+    capture: :first,
+    transform: fn amt ->
+      amt
+      |> String.replace(",", "")
+      |> String.to_float()
+    end
+
+  # Complex custom extraction
+  field :listing_name,
+    function: fn text ->
+      text
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.find(fn line ->
+        String.contains?(line, ["Apartment", "House"]) and
+          not String.match?(line, ~r/^\d+\s+guests?/i)
+      end)
+    end
+
+  defp normalize_dates([start_date, end_date]) do
+    %{
+      start: start_date,
+      end: end_date
+    }
+  end
+end
+
+# Usage
+email = File.read!("reservation.txt")
+result = Datum.parse(email, components: [MyApp.Datum.Components.AirbnbReservation])
+
+# Result might be:
+# %{
+#   reservation_code: "ABC123XYZ",
+#   guest_name: "Alice Johnson",
+#   date_range: %{start: "Mar 28", end: "Apr 3"},
+#   nights: 6,
+#   payout_amount: 5452.22,
+#   listing_name: "Beachfront Apartment"
+# }
+```
+
+## Best Practices
+
+### 1. Use Specific Patterns
+
+Bad:
+```elixir
+field :amount, pattern: ~r/([\d.]+)/
+```
+
+Good:
+```elixir
+field :amount, pattern: ~r/Total:\s*\$([\d,]+\.\d{2})/i
+```
+
+### 2. Transform at Extraction
+
+Don't extract strings when you need numbers:
+
+Bad:
+```elixir
+field :count, pattern: ~r/Count: (\d+)/
+# Returns: "42" (string)
+```
+
+Good:
+```elixir
+field :count,
+  pattern: ~r/Count: (\d+)/,
+  transform: &String.to_integer/1
+# Returns: 42 (integer)
+```
+
+### 3. Use Custom Functions for Complex Logic
+
+When regex patterns become too complex, use a custom function:
+
+```elixir
+field :main_content,
+  function: fn text ->
+    text
+    |> String.split("\n")
+    |> Enum.find(&is_main_content?/1)
+  end
+```
+
+### 4. Handle Optional Fields
+
+Fields that don't match simply won't appear in the result map:
+
+```elixir
+result = Datum.parse(text, components: [MyComponent])
+
+# Access with safe defaults
+name = Map.get(result, :name, "Unknown")
+```
+
+### 5. Compose Multiple Components
+
+Organize related fields into separate components:
+
+```elixir
+result = Datum.parse(text, components: [
+  MyApp.Datum.Components.Header,
+  MyApp.Datum.Components.Body,
+  MyApp.Datum.Components.Footer
+])
+```
+
+## Common Patterns
+
+### Email Extraction
+
+```elixir
+field :email,
+  pattern: ~r/[\w\.-]+@[\w\.-]+\.\w+/,
+  capture: :first
+```
+
+### Phone Number Extraction
+
+```elixir
+field :phone,
+  pattern: ~r/(?:\+1[\s.-]?)?\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/,
+  capture: :all,
+  transform: fn [area, exchange, line] ->
+    "(#{area}) #{exchange}-#{line}"
+  end
+```
+
+### Date Extraction
+
+```elixir
+field :date,
+  pattern: ~r/(\d{4})-(\d{2})-(\d{2})/,
+  capture: :all,
+  transform: fn [year, month, day] ->
+    Date.from_iso8601!("#{year}-#{month}-#{day}")
+  end
+```
+
+### Currency Extraction
+
+```elixir
+field :price,
+  pattern: ~r/\$?([\d,]+\.\d{2})/,
+  capture: :first,
+  transform: fn amount ->
+    amount
+    |> String.replace(",", "")
+    |> String.to_float()
+  end
+```
+
+### URL Extraction
+
+```elixir
+field :url,
+  pattern: ~r/https?:\/\/[^\s]+/,
+  capture: :first
+```
+
+## Testing
+
+Example test for a component:
+
+```elixir
+defmodule MyApp.Datum.Components.EmailParserTest do
+  use ExUnit.Case, async: true
+
+  alias MyApp.Datum.Components.EmailParser
+
+  test "parses email address" do
+    text = "From: alice@example.com"
+    result = Datum.parse(text, components: [EmailParser])
+
+    assert result.sender == "alice@example.com"
+  end
+
+  test "returns empty map when no fields match" do
+    text = "Invalid content"
+    result = Datum.parse(text, components: [EmailParser])
+
+    assert result == %{}
+  end
+
+  test "includes only matched fields" do
+    text = "From: bob@example.com\nSubject: Test"
+    result = Datum.parse(text, components: [EmailParser])
+
+    assert Map.has_key?(result, :sender)
+    assert Map.has_key?(result, :subject)
+    assert !Map.has_key?(result, :date)
+  end
+end
+```
+
+## Troubleshooting
+
+### Field not being extracted?
+
+1. **Check the regex pattern**
+   ```elixir
+   # Test your regex first
+   Regex.run(~r/your_pattern/, text)
+   ```
+
+2. **Verify case sensitivity**
+   ```elixir
+   # Use /i flag for case-insensitive matching
+   pattern: ~r/Pattern:/i
+   ```
+
+3. **Check capture groups**
+   - `:first` captures only the first group
+   - `:all` captures all groups
+   ```elixir
+   # This captures 2 groups
+   pattern: ~r/(\d{4})-(\d{2})/
+   capture: :all  # Returns ["2026", "03"]
+   ```
+
+### Transform function not working?
+
+Ensure your transform function handles the input type correctly:
+
+```elixir
+# This will fail if input is a list
+transform: &String.to_integer/1
+
+# Use :all capture? Transform receives a list
+field :date,
+  pattern: ~r/(\d{4})-(\d{2})-(\d{2})/,
+  capture: :all,
+  transform: fn [year, month, day] -> "#{year}-#{month}-#{day}" end
+```
+
+## Performance Considerations
+
+- Patterns are compiled once at compile-time, so regex performance is optimal
+- Multiple components are evaluated independently; you can parse with multiple components efficiently
+- Transformation functions are called only for matched fields
+
+## License
+
+This project is part of MyApp.

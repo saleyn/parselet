@@ -69,6 +69,14 @@ result = Parselet.parse(email_text, components: [MyApp.Components.EmailParser])
 #   subject: "Meeting Tomorrow",
 #   date: "2026-03-27"
 # }
+
+# or do this (parse/1 function is added to the component automatically):
+
+%MyApp.Components.EmailParser{
+   sender: "alice@example.com",
+   subject: "Meeting Tomorrow",
+   date: "2026-03-27"
+} = MyApp.Components.EmailParser.parse(email_text)
 ```
 
 ## API Reference

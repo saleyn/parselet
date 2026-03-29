@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         elixir: ["1.15", "1.16", "1.17"]
-        otp: ["26.3", "27.0"]
+        otp: ["26", "27"]
 
     steps:
       - name: Checkout repository
@@ -23,6 +23,7 @@ jobs:
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
+          version-type: loose
 
       - name: Install Hex and Rebar
         run: |

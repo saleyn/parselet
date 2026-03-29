@@ -1,3 +1,7 @@
+[![build](https://github.com/saleyn/parselet/actions/workflows/ci.yml/badge.svg)](https://github.com/saleyn/parselet/actions/workflows/ci.yml)
+[![Hex.pm](https://img.shields.io/hexpm/v/parselet.svg)](https://hex.pm/packages/parselet)
+[![Hex.pm](https://img.shields.io/hexpm/dt/parselet.svg)](https://hex.pm/packages/parselet)
+
 # Parselet
 
 A declarative text parsing library for Elixir that makes it easy to extract structured data from unstructured text using a simple, composable DSL.

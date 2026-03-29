@@ -590,7 +590,9 @@ defmodule Parselet.ComponentTest do
       field = fields.test
 
       assert field.name == :test
-      assert Regex.equal?(field.pattern, ~r/Test:\s*(.+)/)
+      assert %Regex{source: source, opts: opts} = field.pattern
+      assert source == ~r/Test:\s*(.+)/.source
+      assert opts == ~r/Test:\s*(.+)/.opts
       assert field.capture == :first
       assert field.required == true
       assert is_function(field.transform)

@@ -41,8 +41,8 @@ jobs:
           set -e
           mix test --cover | \
           awk '/Total/{
-            gsub(/[^0-9.]/,"",$2);
-            coverage=$2
+            gsub(/[^0-9.]/,"");
+            coverage=$0
           } END {
             if (coverage < 90.0) {
               printf "Coverage %.2f%% is below threshold 90.0%%\n", coverage;
